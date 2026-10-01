@@ -1,7 +1,5 @@
 const MODEL_URL='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
-let stream=null,timer=null,busy=false,ready=false;
-let blink={closed:false,count:0,lastBlink:0};
-
+let stream=null,timer=null,busy=false,ready=false,lastAttempt=0;
 const $=x=>document.getElementById(x);
 
 async function models(){
@@ -24,9 +22,8 @@ async function start(){
     });
     $('video').srcObject=stream;
     await $('video').play().catch(()=>{});
-    blink={closed:false,count:0,lastBlink:0};
     $('status').textContent='Kamera aktif — arahkan wajah ke kamera';
-    timer=setInterval(scan,250);
+    timer=setInterval(scan,450);
   }catch(e){
     $('status').textContent='Kamera gagal: '+e.message;
   }
@@ -37,29 +34,22 @@ function stop(){
   if(stream)stream.getTracks().forEach(x=>x.stop());
   stream=null;
   busy=false;
-  blink={closed:false,count:0,lastBlink:0};
   $('status').textContent='Kamera berhenti';
-}
-
-function eyeAspectRatio(p){
-  const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-  return (d(p[1],p[5])+d(p[2],p[4]))/(2*d(p[0],p[3])||1);
-}
-
-function getEAR(landmarks){
-  const left=eyeAspectRatio(landmarks.getLeftEye());
-  const right=eyeAspectRatio(landmarks.getRightEye());
-  return (left+right)/2;
 }
 
 async function scan(){
   if(busy||!stream||!ready)return;
+  if(Date.now()-lastAttempt<2000)return;
+
   const v=$('video');
   if(v.readyState<2)return;
 
   try{
     const d=await faceapi
-      .detectSingleFace(v,new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.45}))
+      .detectSingleFace(
+        v,
+        new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.45})
+      )
       .withFaceLandmarks()
       .withFaceDescriptor();
 
@@ -68,28 +58,11 @@ async function scan(){
       return;
     }
 
-    const e=getEAR(d.landmarks);
-
-    // EAR bervariasi menurut kamera/wajah. Gunakan ambang yang lebih toleran
-    // dan cukup 1 kedipan untuk liveness agar tidak mudah gagal.
-    if(e<.24){
-      blink.closed=true;
-    }else if(blink.closed && e>.27){
-      const now=Date.now();
-      if(now-blink.lastBlink>700){
-        blink.count++;
-        blink.lastBlink=now;
-      }
-      blink.closed=false;
-    }
-
-    if(blink.count<1){
-      $('status').textContent='Wajah terdeteksi — silakan kedip sekali';
-      return;
-    }
-
+    // Tidak lagi meminta kedipan. Begitu wajah terdeteksi,
+    // descriptor langsung dikirim ke server untuk pencocokan.
     busy=true;
-    $('status').textContent='Kedipan terdeteksi — mencocokkan wajah...';
+    lastAttempt=Date.now();
+    $('status').textContent='Wajah terdeteksi — mencocokkan...';
 
     const r=await fetch('/api/recognize',{
       method:'POST',
@@ -106,8 +79,7 @@ async function scan(){
   }catch(e){
     show({ok:false,message:e.message||'Gagal memproses wajah.'});
   }finally{
-    blink={closed:false,count:0,lastBlink:0};
-    setTimeout(()=>{busy=false},1800);
+    setTimeout(()=>{busy=false},1200);
   }
 }
 
