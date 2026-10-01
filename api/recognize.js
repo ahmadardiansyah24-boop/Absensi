@@ -20,6 +20,6 @@ export default async function handler(req,res){
     const result=Array.isArray(rpc)?rpc[0]:rpc;
     if(!result?.ok)return json(res,200,{ok:false,duplicate:true,message:`Sudah absen hari ini pada ${result?.recorded_at||'-'}.`});
     const s=best.students;
-    return json(res,200,{ok:true,student:{id:s.id,nis:s.nis,name:s.name,class_name:s.name,class_name:s.class_name},attendance:{status:result.status,time:result.recorded_at,distance:Number(bestDist.toFixed(4))}});
+    return json(res,200,{ok:true,student:{id:s.id,nis:s.nis,name:s.name,class_name:s.class_name},attendance:{status:result.status,time:result.recorded_at,distance:Number(bestDist.toFixed(4))}});
   }catch(e){return json(res,e.status||500,{ok:false,message:e.message||'Server error'})}
 }
